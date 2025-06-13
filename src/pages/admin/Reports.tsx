@@ -37,6 +37,7 @@ interface ReportData {
     systemUptime: string;
     storageUsed: string;
   };
+  recentActivity: Array<{ description: string; time: string }>;
 }
 
 const Reports = () => {
@@ -51,68 +52,22 @@ const Reports = () => {
   const fetchReportData = async () => {
     try {
       setLoading(true);
-      // Mock data for demonstration - in real app, this would come from your backend
-      const mockData: ReportData = {
-        salesReport: {
-          totalSales: 125000,
-          totalOrders: 342,
-          avgOrderValue: 365,
-          monthlySales: [
-            { month: "Jan", sales: 15000, orders: 45 },
-            { month: "Feb", sales: 18000, orders: 52 },
-            { month: "Mar", sales: 22000, orders: 68 },
-            { month: "Apr", sales: 25000, orders: 71 },
-            { month: "May", sales: 28000, orders: 78 },
-            { month: "Jun", sales: 17000, orders: 28 },
-          ]
+      const response = await fetch('http://localhost:5000/api/admin/reports/data', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        userReport: {
-          totalUsers: 1250,
-          totalSellers: 87,
-          newUsersThisMonth: 45,
-          userGrowth: [
-            { month: "Jan", users: 1000, sellers: 65 },
-            { month: "Feb", users: 1050, sellers: 68 },
-            { month: "Mar", users: 1120, sellers: 72 },
-            { month: "Apr", users: 1180, sellers: 78 },
-            { month: "May", users: 1220, sellers: 82 },
-            { month: "Jun", users: 1250, sellers: 87 },
-          ]
-        },
-        productReport: {
-          totalProducts: 456,
-          topCategories: [
-            { category: "Live Poultry", count: 125, percentage: 27 },
-            { category: "Poultry Products", count: 98, percentage: 21 },
-            { category: "Feeds & Supplements", count: 89, percentage: 20 },
-            { category: "Equipment & Supplies", count: 78, percentage: 17 },
-            { category: "Health Products", count: 66, percentage: 15 },
-          ],
-          lowStockProducts: [
-            { name: "Day-old Chicks", stock: 5, category: "Live Poultry" },
-            { name: "Layer Mash", stock: 3, category: "Feeds & Supplements" },
-            { name: "Newcastle Vaccine", stock: 2, category: "Health Products" },
-          ]
-        },
-        sellerReport: {
-          activeSellers: 75,
-          pendingSellers: 12,
-          topSellers: [
-            { name: "Sample Poultry Farm", sales: 45000, products: 25 },
-            { name: "Broiler Express", sales: 38000, products: 18 },
-            { name: "Poultry Feed Suppliers", sales: 32000, products: 22 },
-            { name: "Healthy Birds Co.", sales: 28000, products: 15 },
-          ]
-        },
-        systemReport: {
-          totalMessages: 1847,
-          unreadMessages: 23,
-          systemUptime: "99.8%",
-          storageUsed: "2.4 GB"
-        }
-      };
+        credentials: 'include'
+      });
       
-      setReportData(mockData);
+      const result = await response.json();
+      console.log("Report data response:", result);
+      
+      if (result.success) {
+        setReportData(result.data);
+      } else {
+        console.error("Failed to fetch report data:", result.message);
+      }
     } catch (error) {
       console.error("Error fetching report data:", error);
     } finally {
@@ -216,38 +171,40 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold text-green-600">
-                  KShs {reportData.salesReport.avgOrderValue}
+                  KShs {reportData.salesReport.avgOrderValue.toLocaleString()}
                 </p>
               </CardContent>
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly Sales Trend</CardTitle>
-              <CardDescription>Sales and orders over the last 6 months</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer
-                config={{
-                  sales: { label: "Sales", color: "#10b981" },
-                  orders: { label: "Orders", color: "#3b82f6" }
-                }}
-                className="h-[300px]"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.salesReport.monthlySales}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="sales" fill="#10b981" />
-                    <Bar dataKey="orders" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </CardContent>
-          </Card>
+          {reportData.salesReport.monthlySales.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly Sales Trend</CardTitle>
+                <CardDescription>Sales and orders over the last 6 months</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={{
+                    sales: { label: "Sales", color: "#10b981" },
+                    orders: { label: "Orders", color: "#3b82f6" }
+                  }}
+                  className="h-[300px]"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.salesReport.monthlySales}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="sales" fill="#10b981" />
+                      <Bar dataKey="orders" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Users Report */}
@@ -298,32 +255,34 @@ const Reports = () => {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>User Growth Trend</CardTitle>
-              <CardDescription>User and seller growth over time</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer
-                config={{
-                  users: { label: "Users", color: "#3b82f6" },
-                  sellers: { label: "Sellers", color: "#10b981" }
-                }}
-                className="h-[300px]"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={reportData.userReport.userGrowth}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="users" stroke="#3b82f6" strokeWidth={2} />
-                    <Line type="monotone" dataKey="sellers" stroke="#10b981" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </CardContent>
-          </Card>
+          {reportData.userReport.userGrowth.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>User Growth Trend</CardTitle>
+                <CardDescription>User and seller growth over time</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={{
+                    users: { label: "Users", color: "#3b82f6" },
+                    sellers: { label: "Sellers", color: "#10b981" }
+                  }}
+                  className="h-[300px]"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={reportData.userReport.userGrowth}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line type="monotone" dataKey="users" stroke="#3b82f6" strokeWidth={2} />
+                      <Line type="monotone" dataKey="sellers" stroke="#10b981" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Products Report */}
@@ -337,39 +296,41 @@ const Reports = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Product Categories Distribution</CardTitle>
-                <CardDescription>Products by category</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={{
-                    products: { label: "Products" }
-                  }}
-                  className="h-[300px]"
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={reportData.productReport.topCategories}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="count"
-                        label={(entry) => `${entry.category}: ${entry.percentage}%`}
-                      >
-                        {reportData.productReport.topCategories.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              </CardContent>
-            </Card>
+            {reportData.productReport.topCategories.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Product Categories Distribution</CardTitle>
+                  <CardDescription>Products by category</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    config={{
+                      products: { label: "Products" }
+                    }}
+                    className="h-[300px]"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={reportData.productReport.topCategories}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="count"
+                          label={(entry) => `${entry.category}: ${entry.percentage}%`}
+                        >
+                          {reportData.productReport.topCategories.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
@@ -379,17 +340,21 @@ const Reports = () => {
               <CardContent>
                 <ScrollArea className="h-[300px]">
                   <div className="space-y-3">
-                    {reportData.productReport.lowStockProducts.map((product, index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
-                        <div>
-                          <p className="font-medium">{product.name}</p>
-                          <p className="text-sm text-gray-600">{product.category}</p>
+                    {reportData.productReport.lowStockProducts.length > 0 ? (
+                      reportData.productReport.lowStockProducts.map((product, index) => (
+                        <div key={index} className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">{product.name}</p>
+                            <p className="text-sm text-gray-600">{product.category}</p>
+                          </div>
+                          <span className="bg-red-100 text-red-800 px-2 py-1 rounded-md text-sm font-medium">
+                            {product.stock} left
+                          </span>
                         </div>
-                        <span className="bg-red-100 text-red-800 px-2 py-1 rounded-md text-sm font-medium">
-                          {product.stock} left
-                        </span>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-gray-500 text-center py-8">No low stock products</p>
+                    )}
                   </div>
                 </ScrollArea>
               </CardContent>
@@ -453,17 +418,21 @@ const Reports = () => {
             <CardContent>
               <ScrollArea className="h-[300px]">
                 <div className="space-y-3">
-                  {reportData.sellerReport.topSellers.map((seller, index) => (
-                    <div key={index} className="flex justify-between items-center p-3 bg-sage-50 rounded-lg">
-                      <div>
-                        <p className="font-medium">{seller.name}</p>
-                        <p className="text-sm text-gray-600">{seller.products} products</p>
+                  {reportData.sellerReport.topSellers.length > 0 ? (
+                    reportData.sellerReport.topSellers.map((seller, index) => (
+                      <div key={index} className="flex justify-between items-center p-3 bg-sage-50 rounded-lg">
+                        <div>
+                          <p className="font-medium">{seller.name}</p>
+                          <p className="text-sm text-gray-600">{seller.products} products</p>
+                        </div>
+                        <span className="text-sage-800 font-medium">
+                          KShs {seller.sales.toLocaleString()}
+                        </span>
                       </div>
-                      <span className="text-sage-800 font-medium">
-                        KShs {seller.sales.toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No seller sales data available</p>
+                  )}
                 </div>
               </ScrollArea>
             </CardContent>
@@ -519,6 +488,30 @@ const Reports = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Recent Activity */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>Latest platform activities</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-3">
+                  {reportData.recentActivity.length > 0 ? (
+                    reportData.recentActivity.map((activity, index) => (
+                      <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <span className="text-sm">{activity.description}</span>
+                        <span className="text-xs text-gray-500">{activity.time}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-center py-8">No recent activity</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

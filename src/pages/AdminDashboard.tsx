@@ -5,12 +5,21 @@ import { Users, Package, ShoppingCart, MessageSquare, ArrowLeft, User, BarChart3
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
+interface DashboardStats {
+  totalUsers: number;
+  totalSellers: number;
+  totalProducts: number;
+  totalOrders: number;
+  totalMessages: number;
+}
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminEmail, setAdminEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -35,6 +44,9 @@ const AdminDashboard = () => {
           if (data.isAuthenticated) {
             setIsAuthenticated(true);
             setAdminEmail(storedEmail);
+            
+            // Fetch dashboard stats
+            await fetchDashboardStats();
           } else {
             // If backend says not authenticated, clear localStorage and redirect to login
             localStorage.removeItem('isAdminAuthenticated');
@@ -57,6 +69,28 @@ const AdminDashboard = () => {
 
     checkAuth();
   }, [navigate]);
+
+  const fetchDashboardStats = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/admin/dashboard-stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setStats(data.stats);
+      } else {
+        console.error("Failed to fetch dashboard stats:", data.message);
+      }
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -143,7 +177,7 @@ const AdminDashboard = () => {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-600">Total Users</h3>
-                <p className="text-2xl font-bold">1,250</p>
+                <p className="text-2xl font-bold">{stats?.totalUsers || 0}</p>
               </div>
             </div>
           </div>
@@ -155,7 +189,7 @@ const AdminDashboard = () => {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-600">Total Products</h3>
-                <p className="text-2xl font-bold">456</p>
+                <p className="text-2xl font-bold">{stats?.totalProducts || 0}</p>
               </div>
             </div>
           </div>
@@ -167,7 +201,7 @@ const AdminDashboard = () => {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-600">Total Orders</h3>
-                <p className="text-2xl font-bold">342</p>
+                <p className="text-2xl font-bold">{stats?.totalOrders || 0}</p>
               </div>
             </div>
           </div>
@@ -179,7 +213,7 @@ const AdminDashboard = () => {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-600">Messages</h3>
-                <p className="text-2xl font-bold">128</p>
+                <p className="text-2xl font-bold">{stats?.totalMessages || 0}</p>
               </div>
             </div>
           </div>

@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from models import db, User, SellerProfile, AdminProfile, Product, Message, CartItem, Order, OrderItem
@@ -213,23 +212,245 @@ def admin_dashboard_stats():
         return jsonify({'success': False, 'message': 'Admin not authenticated'})
     
     try:
-        # Get counts from database
+        # Get real counts from database
         total_products = Product.query.count()
-        total_users = User.query.count() + SellerProfile.query.count()  # Both buyers and sellers
+        total_users = User.query.count()
+        total_sellers = SellerProfile.query.count()
         total_orders = Order.query.count()
+        total_messages = Message.query.count()
         
         return jsonify({
             'success': True,
             'stats': {
-                'products': total_products,
-                'users': total_users,
-                'orders': total_orders
+                'totalUsers': total_users,
+                'totalSellers': total_sellers,
+                'totalProducts': total_products,
+                'totalOrders': total_orders,
+                'totalMessages': total_messages
             }
         })
     
     except Exception as e:
         print(f"Error fetching dashboard stats: {str(e)}")
         return jsonify({'success': False, 'message': f'Error fetching dashboard statistics: {str(e)}'})
+
+@app.route('/api/admin/reports/data', methods=['GET'])
+def admin_reports_data():
+    """Get comprehensive report data for admin"""
+    # First check if admin is authenticated
+    auth_check = check_admin_auth()
+    auth_data = auth_check.get_json()
+    
+    if not auth_data.get('isAuthenticated'):
+        return jsonify({'success': False, 'message': 'Admin not authenticated'})
+    
+    try:
+        # Sales Report Data
+        total_orders = Order.query.count()
+        total_sales = db.session.query(db.func.sum(Order.total)).scalar() or 0
+        avg_order_value = total_sales / total_orders if total_orders > 0 else 0
+        
+        # Monthly sales data (last 6 months)
+        monthly_sales = db.session.query(
+            db.func.date_format(Order.created_at, '%b').label('month'),
+            db.func.sum(Order.total).label('sales'),
+            db.func.count(Order.order_id).label('orders')
+        ).filter(
+            Order.created_at >= db.func.date_sub(db.func.now(), db.text('INTERVAL 6 MONTH'))
+        ).group_by(
+            db.func.date_format(Order.created_at, '%Y-%m')
+        ).order_by(
+            db.func.date_format(Order.created_at, '%Y-%m')
+        ).all()
+        
+        monthly_sales_data = [
+            {
+                'month': sale.month,
+                'sales': float(sale.sales) if sale.sales else 0,
+                'orders': sale.orders
+            } for sale in monthly_sales
+        ]
+        
+        # User Report Data
+        total_users = User.query.count()
+        total_sellers = SellerProfile.query.count()
+        new_users_this_month = User.query.filter(
+            User.created_at >= db.func.date_sub(db.func.now(), db.text('INTERVAL 1 MONTH'))
+        ).count()
+        
+        # User growth data (last 6 months)
+        user_growth = db.session.query(
+            db.func.date_format(User.created_at, '%b').label('month'),
+            db.func.count(User.user_id).label('users')
+        ).filter(
+            User.created_at >= db.func.date_sub(db.func.now(), db.text('INTERVAL 6 MONTH'))
+        ).group_by(
+            db.func.date_format(User.created_at, '%Y-%m')
+        ).order_by(
+            db.func.date_format(User.created_at, '%Y-%m')
+        ).all()
+        
+        seller_growth = db.session.query(
+            db.func.date_format(SellerProfile.created_at, '%b').label('month'),
+            db.func.count(SellerProfile.seller_id).label('sellers')
+        ).filter(
+            SellerProfile.created_at >= db.func.date_sub(db.func.now(), db.text('INTERVAL 6 MONTH'))
+        ).group_by(
+            db.func.date_format(SellerProfile.created_at, '%Y-%m')
+        ).order_by(
+            db.func.date_format(SellerProfile.created_at, '%Y-%m')
+        ).all()
+        
+        # Combine user and seller growth data
+        growth_dict = {}
+        for user in user_growth:
+            growth_dict[user.month] = {'month': user.month, 'users': user.users, 'sellers': 0}
+        
+        for seller in seller_growth:
+            if seller.month in growth_dict:
+                growth_dict[seller.month]['sellers'] = seller.sellers
+            else:
+                growth_dict[seller.month] = {'month': seller.month, 'users': 0, 'sellers': seller.sellers}
+        
+        user_growth_data = list(growth_dict.values())
+        
+        # Product Report Data
+        total_products = Product.query.count()
+        
+        # Category distribution
+        category_data = db.session.query(
+            Product.category,
+            db.func.count(Product.product_id).label('count')
+        ).group_by(Product.category).all()
+        
+        total_category_products = sum([cat.count for cat in category_data])
+        top_categories = [
+            {
+                'category': cat.category,
+                'count': cat.count,
+                'percentage': round((cat.count / total_category_products) * 100) if total_category_products > 0 else 0
+            } for cat in category_data
+        ]
+        
+        # Low stock products (stock <= 10)
+        low_stock_products = Product.query.filter(Product.stock <= 10).limit(10).all()
+        low_stock_data = [
+            {
+                'name': product.name,
+                'stock': product.stock,
+                'category': product.category
+            } for product in low_stock_products
+        ]
+        
+        # Seller Report Data
+        active_sellers = SellerProfile.query.filter_by(approval_status='approved').count()
+        pending_sellers = SellerProfile.query.filter_by(approval_status='pending').count()
+        
+        # Top sellers by order value
+        top_sellers_query = db.session.query(
+            SellerProfile.business_name,
+            db.func.sum(Order.total).label('total_sales'),
+            db.func.count(Product.product_id).label('product_count')
+        ).join(
+            Product, Product.seller_id == SellerProfile.seller_id
+        ).join(
+            OrderItem, OrderItem.product_id == Product.product_id
+        ).join(
+            Order, Order.order_id == OrderItem.order_id
+        ).group_by(
+            SellerProfile.seller_id
+        ).order_by(
+            db.func.sum(Order.total).desc()
+        ).limit(5).all()
+        
+        top_sellers_data = [
+            {
+                'name': seller.business_name,
+                'sales': float(seller.total_sales) if seller.total_sales else 0,
+                'products': seller.product_count
+            } for seller in top_sellers_query
+        ]
+        
+        # System Report Data
+        total_messages = Message.query.count()
+        unread_messages = Message.query.filter_by(is_read=False).count()
+        
+        # Recent activity (last 10 activities)
+        recent_users = User.query.order_by(User.created_at.desc()).limit(3).all()
+        recent_sellers = SellerProfile.query.order_by(SellerProfile.created_at.desc()).limit(3).all()
+        recent_orders = Order.query.order_by(Order.created_at.desc()).limit(3).all()
+        
+        recent_activity = []
+        
+        # Add recent user registrations
+        for user in recent_users:
+            time_diff = datetime.utcnow() - user.created_at
+            hours_ago = int(time_diff.total_seconds() / 3600)
+            recent_activity.append({
+                'description': f'New user registration: {user.username}',
+                'time': f'{hours_ago} hours ago' if hours_ago > 0 else 'Just now'
+            })
+        
+        # Add recent seller registrations
+        for seller in recent_sellers:
+            time_diff = datetime.utcnow() - seller.created_at
+            hours_ago = int(time_diff.total_seconds() / 3600)
+            recent_activity.append({
+                'description': f'New seller registration: {seller.business_name}',
+                'time': f'{hours_ago} hours ago' if hours_ago > 0 else 'Just now'
+            })
+        
+        # Add recent orders
+        for order in recent_orders:
+            time_diff = datetime.utcnow() - order.created_at
+            hours_ago = int(time_diff.total_seconds() / 3600)
+            recent_activity.append({
+                'description': f'Order processed: KShs {order.total:,.0f}',
+                'time': f'{hours_ago} hours ago' if hours_ago > 0 else 'Just now'
+            })
+        
+        # Sort by most recent and limit to 5
+        recent_activity.sort(key=lambda x: x['time'])
+        recent_activity = recent_activity[:5]
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'salesReport': {
+                    'totalSales': float(total_sales),
+                    'totalOrders': total_orders,
+                    'avgOrderValue': float(avg_order_value),
+                    'monthlySales': monthly_sales_data
+                },
+                'userReport': {
+                    'totalUsers': total_users,
+                    'totalSellers': total_sellers,
+                    'newUsersThisMonth': new_users_this_month,
+                    'userGrowth': user_growth_data
+                },
+                'productReport': {
+                    'totalProducts': total_products,
+                    'topCategories': top_categories,
+                    'lowStockProducts': low_stock_data
+                },
+                'sellerReport': {
+                    'activeSellers': active_sellers,
+                    'pendingSellers': pending_sellers,
+                    'topSellers': top_sellers_data
+                },
+                'systemReport': {
+                    'totalMessages': total_messages,
+                    'unreadMessages': unread_messages,
+                    'systemUptime': '99.8%',  # This would need server monitoring
+                    'storageUsed': '2.4 GB'   # This would need filesystem monitoring
+                },
+                'recentActivity': recent_activity
+            }
+        })
+    
+    except Exception as e:
+        print(f"Error fetching report data: {str(e)}")
+        return jsonify({'success': False, 'message': f'Error fetching report data: {str(e)}'})
 
 @app.route('/api/admin/users', methods=['GET'])
 def admin_get_users():
@@ -435,8 +656,6 @@ def get_products():
     except Exception as e:
         print(f"Error fetching products: {str(e)}")
         return jsonify({'success': False, 'message': f'Error fetching products: {str(e)}'})
-
-# ... keep existing code (all other product, message, cart, order routes)
 
 @app.route('/api/products/<product_id>', methods=['GET'])
 def get_product(product_id):
